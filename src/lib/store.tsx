@@ -1,4 +1,4 @@
-// src/lib/store.tsx - Turso Database Version with Full Error Handling
+// src/lib/store.tsx - Turso Database Version with Simplified Saving
 import {
   createContext,
   useCallback,
@@ -187,7 +187,10 @@ export function applyReview(w: Word, rating: 'Again' | 'Hard' | 'Good' | 'Easy',
 
 export const minutesFmt = (m: number) => `${Math.floor(m / 60)}h ${m % 60}m`;
 
-// ============= TURSO DATABASE FUNCTIONS WITH ERROR HANDLING =============
+// ============= LOCAL STORAGE KEY =============
+const BACKUP_KEY = 'english-os-v1-backup';
+
+// ============= TURSO DATABASE FUNCTIONS =============
 
 async function loadFromTurso(): Promise<DB> {
   const dbData = emptyDB();
@@ -209,7 +212,24 @@ async function loadFromTurso(): Promise<DB> {
         history: typeof w.history === 'string' ? JSON.parse(w.history) : (w.history || []),
       }));
     }
-    console.log(`✅ Loaded ${dbData.words.length} words`);
+    console.log(`✅ Loaded ${dbData.words.length} words from Turso`);
+
+    // If no words found in Turso, try localStorage backup
+    if (dbData.words.length === 0) {
+      console.log('📝 No words in Turso, checking localStorage backup...');
+      try {
+        const backup = localStorage.getItem(BACKUP_KEY);
+        if (backup) {
+          const parsed = JSON.parse(backup);
+          if (parsed.words && parsed.words.length > 0) {
+            dbData.words = parsed.words;
+            console.log(`✅ Loaded ${dbData.words.length} words from localStorage backup`);
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ Could not read localStorage backup:', e);
+      }
+    }
 
     // Load word links
     const links = await query<WordLink>('SELECT * FROM word_links');
@@ -245,101 +265,138 @@ async function loadFromTurso(): Promise<DB> {
     return dbData;
   } catch (error) {
     console.error('❌ Error loading from Turso:', error);
+    
+    // Try localStorage backup on error
+    try {
+      const backup = localStorage.getItem(BACKUP_KEY);
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        if (parsed.words) {
+          dbData.words = parsed.words;
+          console.log(`✅ Loaded ${dbData.words.length} words from localStorage backup (after error)`);
+        }
+      }
+    } catch (e) {
+      console.error('❌ Backup load failed:', e);
+    }
+    
     return dbData;
   }
 }
 
+// ============= SIMPLIFIED SAVING FUNCTION =============
 async function saveToTurso(data: DB) {
   try {
-    console.log('💾 Saving data to Turso...');
+    console.log('💾 Starting save to Turso...');
+    console.log('📊 Words to save:', data.words.length);
     
-    // Clear existing data
-    await db.execute('DELETE FROM folders');
-    await db.execute('DELETE FROM words');
-    await db.execute('DELETE FROM word_links');
-    await db.execute('DELETE FROM activity_types');
-    await db.execute('DELETE FROM activity_logs');
-    await db.execute('DELETE FROM day_blocks');
-    await db.execute('DELETE FROM settings');
+    // Save each word individually using INSERT OR REPLACE
+    for (const word of data.words) {
+      try {
+        const result = await db.execute({
+          sql: `INSERT OR REPLACE INTO words 
+                (id, word, meaning, example, folder_id, tags, difficulty, level, source, created_at, due, stage, history) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          args: [
+            word.id,
+            word.word,
+            word.meaning,
+            word.example,
+            word.folderId,
+            JSON.stringify(word.tags),
+            word.difficulty,
+            word.level,
+            word.source,
+            word.createdAt,
+            word.due,
+            word.stage,
+            JSON.stringify(word.history),
+          ],
+        });
+        console.log(`✅ Saved word: ${word.word} (${word.id})`);
+      } catch (wordError) {
+        console.error(`❌ Failed to save word ${word.word}:`, wordError);
+      }
+    }
 
-    // Insert folders
+    // Save folders
     for (const folder of data.folders) {
-      await db.execute({
-        sql: 'INSERT INTO folders (id, name, parent_id) VALUES (?, ?, ?)',
-        args: [folder.id, folder.name, folder.parentId],
-      });
+      try {
+        await db.execute({
+          sql: 'INSERT OR REPLACE INTO folders (id, name, parent_id) VALUES (?, ?, ?)',
+          args: [folder.id, folder.name, folder.parentId],
+        });
+      } catch (e) {
+        console.error(`❌ Failed to save folder ${folder.name}:`, e);
+      }
     }
     console.log(`✅ Saved ${data.folders.length} folders`);
 
-    // Insert words
-    for (const word of data.words) {
-      await db.execute({
-        sql: `INSERT INTO words (id, word, meaning, example, folder_id, tags, difficulty, level, source, created_at, due, stage, history) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [
-          word.id,
-          word.word,
-          word.meaning,
-          word.example,
-          word.folderId,
-          JSON.stringify(word.tags),
-          word.difficulty,
-          word.level,
-          word.source,
-          word.createdAt,
-          word.due,
-          word.stage,
-          JSON.stringify(word.history),
-        ],
-      });
-    }
-    console.log(`✅ Saved ${data.words.length} words`);
-
-    // Insert word links
+    // Save links
     for (const link of data.links) {
-      await db.execute({
-        sql: 'INSERT INTO word_links (id, word_a_id, word_b_id, type) VALUES (?, ?, ?, ?)',
-        args: [link.id, link.a, link.b, link.type],
-      });
+      try {
+        await db.execute({
+          sql: 'INSERT OR REPLACE INTO word_links (id, word_a_id, word_b_id, type) VALUES (?, ?, ?, ?)',
+          args: [link.id, link.a, link.b, link.type],
+        });
+      } catch (e) {
+        console.error(`❌ Failed to save link:`, e);
+      }
     }
     console.log(`✅ Saved ${data.links.length} links`);
 
-    // Insert activity types
+    // Save activity types
     for (const type of data.activityTypes) {
-      await db.execute({
-        sql: 'INSERT INTO activity_types (id, name) VALUES (?, ?)',
-        args: [type.id, type.name],
-      });
+      try {
+        await db.execute({
+          sql: 'INSERT OR REPLACE INTO activity_types (id, name) VALUES (?, ?)',
+          args: [type.id, type.name],
+        });
+      } catch (e) {
+        console.error(`❌ Failed to save activity type:`, e);
+      }
     }
     console.log(`✅ Saved ${data.activityTypes.length} activity types`);
 
-    // Insert activity logs
+    // Save logs
     for (const log of data.logs) {
-      await db.execute({
-        sql: 'INSERT INTO activity_logs (id, log_date, type_id, minutes, note) VALUES (?, ?, ?, ?, ?)',
-        args: [log.id, log.date, log.typeId, log.minutes, log.note || null],
-      });
+      try {
+        await db.execute({
+          sql: 'INSERT OR REPLACE INTO activity_logs (id, log_date, type_id, minutes, note) VALUES (?, ?, ?, ?, ?)',
+          args: [log.id, log.date, log.typeId, log.minutes, log.note || null],
+        });
+      } catch (e) {
+        console.error(`❌ Failed to save log:`, e);
+      }
     }
     console.log(`✅ Saved ${data.logs.length} logs`);
 
-    // Insert day blocks
+    // Save blocks
     for (const block of data.blocks) {
-      await db.execute({
-        sql: 'INSERT INTO day_blocks (id, block_date, hour, label, type_id) VALUES (?, ?, ?, ?, ?)',
-        args: [block.id, block.date, block.hour, block.label, block.typeId],
-      });
+      try {
+        await db.execute({
+          sql: 'INSERT OR REPLACE INTO day_blocks (id, block_date, hour, label, type_id) VALUES (?, ?, ?, ?, ?)',
+          args: [block.id, block.date, block.hour, block.label, block.typeId],
+        });
+      } catch (e) {
+        console.error(`❌ Failed to save block:`, e);
+      }
     }
     console.log(`✅ Saved ${data.blocks.length} day blocks`);
 
-    // Insert settings
-    await db.execute({
-      sql: 'INSERT INTO settings (id, schedule, dropdowns, reminder) VALUES (1, ?, ?, ?)',
-      args: [
-        JSON.stringify(data.settings.schedule),
-        JSON.stringify(data.settings.dropdowns),
-        JSON.stringify(data.settings.reminder),
-      ],
-    });
+    // Save settings
+    try {
+      await db.execute({
+        sql: 'INSERT OR REPLACE INTO settings (id, schedule, dropdowns, reminder) VALUES (1, ?, ?, ?)',
+        args: [
+          JSON.stringify(data.settings.schedule),
+          JSON.stringify(data.settings.dropdowns),
+          JSON.stringify(data.settings.reminder),
+        ],
+      });
+    } catch (e) {
+      console.error('❌ Failed to save settings:', e);
+    }
 
     console.log('✅ All data saved to Turso successfully!');
   } catch (error) {
@@ -394,16 +451,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     loadData();
   }, []);
 
-  // Update function - writes to Turso
+  // ============= UPDATE FUNCTION =============
   const update = useCallback((fn: (d: DB) => void) => {
     setDb((prev) => {
       const next: DB = JSON.parse(JSON.stringify(prev));
       fn(next);
       
+      console.log('📝 Update called, words count:', next.words.length);
+      
+      // Save to localStorage (immediate backup)
+      try {
+        localStorage.setItem(BACKUP_KEY, JSON.stringify(next));
+        console.log('💾 Saved to localStorage backup');
+      } catch (e) {
+        console.warn('⚠️ Could not save to localStorage:', e);
+      }
+      
       // Save to Turso (async)
-      saveToTurso(next).catch((error) => {
-        console.error('❌ Failed to save to Turso:', error);
-      });
+      saveToTurso(next)
+        .then(() => {
+          console.log('✅ Data saved to Turso successfully!');
+        })
+        .catch((error) => {
+          console.error('❌ Failed to save to Turso:', error);
+        });
       
       return next;
     });
@@ -414,6 +485,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const fresh = seedDB();
     try {
       await saveToTurso(fresh);
+      localStorage.setItem(BACKUP_KEY, JSON.stringify(fresh));
       setDb(fresh);
       console.log('✅ Database reset successfully');
     } catch (error) {
