@@ -1,4 +1,4 @@
-// src/lib/store.tsx - Turso Database Version
+// src/lib/store.tsx - Fixed Turso Database Version
 import {
   createContext,
   useCallback,
@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { query, queryOne, db } from './db';
 
-// ============= TYPES (Keep these exactly as they were) =============
+// ============= TYPES =============
 export type Folder = { id: string; name: string; parentId: string | null };
 export type Word = {
   id: string;
@@ -46,7 +46,7 @@ export type DB = {
   settings: Settings;
 };
 
-// ============= HELPERS (Keep these exactly as they were) =============
+// ============= HELPERS =============
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 export const today = () => new Date().toISOString().slice(0, 10);
 export const addDays = (iso: string, n: number) => {
@@ -137,7 +137,6 @@ function seedDB(): DB {
   return db;
 }
 
-// ============= FOLDER HELPERS (Keep these exactly as they were) =============
 export function folderPath(folders: Folder[], id: string | null): Folder[] {
   const out: Folder[] = [];
   let cur = folders.find((f) => f.id === id);
@@ -190,134 +189,144 @@ export const minutesFmt = (m: number) => `${Math.floor(m / 60)}h ${m % 60}m`;
 
 // ============= TURSO DATABASE FUNCTIONS =============
 
-// Load all data from Turso
 async function loadFromTurso(): Promise<DB> {
-  const db = emptyDB();
+  const dbData = emptyDB();
 
-  // Load folders
-  const folders = await query<Folder>('SELECT * FROM folders ORDER BY name');
-  db.folders = folders;
+  try {
+    // Load folders
+    const folders = await query<Folder>('SELECT * FROM folders ORDER BY name');
+    dbData.folders = folders;
 
-  // Load words
-  const words = await query<Word>('SELECT * FROM words ORDER BY word');
-  db.words = words.map(w => ({
-    ...w,
-    tags: JSON.parse(w.tags as unknown as string),
-    history: JSON.parse(w.history as unknown as string),
-  }));
+    // Load words
+    const words = await query<any>('SELECT * FROM words ORDER BY word');
+    dbData.words = words.map(w => ({
+      ...w,
+      tags: JSON.parse(w.tags),
+      history: JSON.parse(w.history),
+    }));
 
-  // Load word links
-  const links = await query<WordLink>('SELECT * FROM word_links');
-  db.links = links;
+    // Load word links
+    const links = await query<WordLink>('SELECT * FROM word_links');
+    dbData.links = links;
 
-  // Load activity types
-  const activityTypes = await query<ActivityType>('SELECT * FROM activity_types ORDER BY name');
-  db.activityTypes = activityTypes;
+    // Load activity types
+    const activityTypes = await query<ActivityType>('SELECT * FROM activity_types ORDER BY name');
+    dbData.activityTypes = activityTypes;
 
-  // Load activity logs
-  const logs = await query<ActivityLog>('SELECT * FROM activity_logs ORDER BY log_date DESC');
-  db.logs = logs;
+    // Load activity logs
+    const logs = await query<ActivityLog>('SELECT * FROM activity_logs ORDER BY log_date DESC');
+    dbData.logs = logs;
 
-  // Load day blocks
-  const blocks = await query<DayBlock>('SELECT * FROM day_blocks ORDER BY block_date, hour');
-  db.blocks = blocks;
+    // Load day blocks
+    const blocks = await query<DayBlock>('SELECT * FROM day_blocks ORDER BY block_date, hour');
+    dbData.blocks = blocks;
 
-  // Load settings
-  const settings = await queryOne<Settings>('SELECT schedule, dropdowns, reminder FROM settings WHERE id = 1');
-  if (settings) {
-    db.settings = {
-      schedule: JSON.parse(settings.schedule as unknown as string),
-      dropdowns: JSON.parse(settings.dropdowns as unknown as string),
-      reminder: JSON.parse(settings.reminder as unknown as string),
-    };
+    // Load settings
+    const settings = await queryOne<any>('SELECT schedule, dropdowns, reminder FROM settings WHERE id = 1');
+    if (settings) {
+      dbData.settings = {
+        schedule: JSON.parse(settings.schedule),
+        dropdowns: JSON.parse(settings.dropdowns),
+        reminder: JSON.parse(settings.reminder),
+      };
+    }
+
+    return dbData;
+  } catch (error) {
+    console.error('Error loading from Turso:', error);
+    return dbData;
   }
-
-  return db;
 }
 
-// Save entire DB to Turso (used for initial seed or reset)
-async function saveToTurso(db: DB) {
-  // Clear existing data
-  await db.execute('DELETE FROM folders');
-  await db.execute('DELETE FROM words');
-  await db.execute('DELETE FROM word_links');
-  await db.execute('DELETE FROM activity_types');
-  await db.execute('DELETE FROM activity_logs');
-  await db.execute('DELETE FROM day_blocks');
-  await db.execute('DELETE FROM settings');
+async function saveToTurso(data: DB) {
+  try {
+    // Clear existing data
+    await db.execute('DELETE FROM folders');
+    await db.execute('DELETE FROM words');
+    await db.execute('DELETE FROM word_links');
+    await db.execute('DELETE FROM activity_types');
+    await db.execute('DELETE FROM activity_logs');
+    await db.execute('DELETE FROM day_blocks');
+    await db.execute('DELETE FROM settings');
 
-  // Insert folders
-  for (const folder of db.folders) {
-    await db.execute({
-      sql: 'INSERT INTO folders (id, name, parent_id) VALUES (?, ?, ?)',
-      args: [folder.id, folder.name, folder.parentId],
-    });
-  }
+    // Insert folders
+    for (const folder of data.folders) {
+      await db.execute({
+        sql: 'INSERT INTO folders (id, name, parent_id) VALUES (?, ?, ?)',
+        args: [folder.id, folder.name, folder.parentId],
+      });
+    }
 
-  // Insert words
-  for (const word of db.words) {
+    // Insert words
+    for (const word of data.words) {
+      await db.execute({
+        sql: `INSERT INTO words (id, word, meaning, example, folder_id, tags, difficulty, level, source, created_at, due, stage, history) 
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          word.id,
+          word.word,
+          word.meaning,
+          word.example,
+          word.folderId,
+          JSON.stringify(word.tags),
+          word.difficulty,
+          word.level,
+          word.source,
+          word.createdAt,
+          word.due,
+          word.stage,
+          JSON.stringify(word.history),
+        ],
+      });
+    }
+
+    // Insert word links
+    for (const link of data.links) {
+      await db.execute({
+        sql: 'INSERT INTO word_links (id, word_a_id, word_b_id, type) VALUES (?, ?, ?, ?)',
+        args: [link.id, link.a, link.b, link.type],
+      });
+    }
+
+    // Insert activity types
+    for (const type of data.activityTypes) {
+      await db.execute({
+        sql: 'INSERT INTO activity_types (id, name) VALUES (?, ?)',
+        args: [type.id, type.name],
+      });
+    }
+
+    // Insert activity logs
+    for (const log of data.logs) {
+      await db.execute({
+        sql: 'INSERT INTO activity_logs (id, log_date, type_id, minutes, note) VALUES (?, ?, ?, ?, ?)',
+        args: [log.id, log.date, log.typeId, log.minutes, log.note || null],
+      });
+    }
+
+    // Insert day blocks
+    for (const block of data.blocks) {
+      await db.execute({
+        sql: 'INSERT INTO day_blocks (id, block_date, hour, label, type_id) VALUES (?, ?, ?, ?, ?)',
+        args: [block.id, block.date, block.hour, block.label, block.typeId],
+      });
+    }
+
+    // Insert settings
     await db.execute({
-      sql: `INSERT INTO words (id, word, meaning, example, folder_id, tags, difficulty, level, source, created_at, due, stage, history) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: 'INSERT INTO settings (id, schedule, dropdowns, reminder) VALUES (1, ?, ?, ?)',
       args: [
-        word.id,
-        word.word,
-        word.meaning,
-        word.example,
-        word.folderId,
-        JSON.stringify(word.tags),
-        word.difficulty,
-        word.level,
-        word.source,
-        word.createdAt,
-        word.due,
-        word.stage,
-        JSON.stringify(word.history),
+        JSON.stringify(data.settings.schedule),
+        JSON.stringify(data.settings.dropdowns),
+        JSON.stringify(data.settings.reminder),
       ],
     });
-  }
 
-  // Insert word links
-  for (const link of db.links) {
-    await db.execute({
-      sql: 'INSERT INTO word_links (id, word_a_id, word_b_id, type) VALUES (?, ?, ?, ?)',
-      args: [link.id, link.a, link.b, link.type],
-    });
+    console.log('✅ Data saved to Turso successfully');
+  } catch (error) {
+    console.error('❌ Error saving to Turso:', error);
+    throw error;
   }
-
-  // Insert activity types
-  for (const type of db.activityTypes) {
-    await db.execute({
-      sql: 'INSERT INTO activity_types (id, name) VALUES (?, ?)',
-      args: [type.id, type.name],
-    });
-  }
-
-  // Insert activity logs
-  for (const log of db.logs) {
-    await db.execute({
-      sql: 'INSERT INTO activity_logs (id, log_date, type_id, minutes, note) VALUES (?, ?, ?, ?, ?)',
-      args: [log.id, log.date, log.typeId, log.minutes, log.note || null],
-    });
-  }
-
-  // Insert day blocks
-  for (const block of db.blocks) {
-    await db.execute({
-      sql: 'INSERT INTO day_blocks (id, block_date, hour, label, type_id) VALUES (?, ?, ?, ?, ?)',
-      args: [block.id, block.date, block.hour, block.label, block.typeId],
-    });
-  }
-
-  // Insert settings
-  await db.execute({
-    sql: 'INSERT INTO settings (id, schedule, dropdowns, reminder) VALUES (1, ?, ?, ?)',
-    args: [
-      JSON.stringify(db.settings.schedule),
-      JSON.stringify(db.settings.dropdowns),
-      JSON.stringify(db.settings.reminder),
-    ],
-  });
 }
 
 // ============= STORE CONTEXT =============
@@ -341,18 +350,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const loadData = async () => {
       try {
         setLoading(true);
-        const data = await loadFromTurso();
+        let data = await loadFromTurso();
         
         // Check if we got any data, if not seed the database
         if (data.words.length === 0 && data.folders.length === 0) {
+          console.log('📝 No data found, seeding database...');
           const seedData = seedDB();
           await saveToTurso(seedData);
-          setDb(seedData);
-        } else {
-          setDb(data);
+          data = seedData;
         }
+        
+        setDb(data);
+        console.log('✅ Data loaded successfully, words:', data.words.length);
       } catch (error) {
-        console.error('Failed to load from Turso:', error);
+        console.error('❌ Failed to load data:', error);
         // Fallback to seed data
         const seedData = seedDB();
         setDb(seedData);
@@ -370,23 +381,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const next: DB = JSON.parse(JSON.stringify(prev));
       fn(next);
       
-      // Save to Turso in background
+      // Save to Turso (async)
       saveToTurso(next).catch((error) => {
-        console.error('Failed to save to Turso:', error);
+        console.error('❌ Failed to save to Turso:', error);
       });
       
       return next;
     });
   }, []);
 
-  // Reset function - resets to seed data
+  // Reset function
   const reset = useCallback(async () => {
     const fresh = seedDB();
     try {
       await saveToTurso(fresh);
       setDb(fresh);
+      console.log('✅ Database reset successfully');
     } catch (error) {
-      console.error('Failed to reset database:', error);
+      console.error('❌ Failed to reset database:', error);
     }
   }, []);
 
