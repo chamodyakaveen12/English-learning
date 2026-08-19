@@ -1,0 +1,1 @@
+import{c as e}from"./AppShell-DmkZ14AU.js";var t=e(`chevron-right`,[[`path`,{d:`m9 18 6-6-6-6`,key:`mthhwq`}]]);export{t};
