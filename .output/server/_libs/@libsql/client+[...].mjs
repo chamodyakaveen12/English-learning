@@ -1,18 +1,12 @@
-import { n as __esmMin, t as __commonJSMin } from "../../_runtime.mjs";
+import { t as __commonJSMin } from "../../_runtime.mjs";
 //#region node_modules/unenv/dist/runtime/polyfill/globalthis.mjs
-var globalthis_default;
-var init_globalthis = __esmMin((() => {
-	globalthis_default = globalThis;
-}));
+var globalthis_default = globalThis;
 (() => {
 	return new RegExp(`^(?<scheme>[A-Za-z][A-Za-z.+-]*):(//(?<authority>[^/?#]*))?(?<path>[^?#]*)(\\?(?<query>[^#]*))?(#(?<fragment>.*))?$`, "su");
 })();
 (() => {
 	return new RegExp(`^((?<username>[^:]*)(:(?<password>.*))?@)?((?<host>[^:\\[\\]]*)|(\\[(?<host_br>[^\\[\\]]*)\\]))(:(?<port>[0-9]*))?$`, "su");
 })();
-//#endregion
-//#region node_modules/@libsql/isomorphic-ws/web.mjs
-init_globalthis();
 if (typeof WebSocket !== "undefined");
 else if (typeof globalthis_default !== "undefined") globalthis_default.WebSocket;
 else if (typeof window !== "undefined") window.WebSocket;
@@ -89,4 +83,4 @@ else Promise.resolve();
 	};
 })))();
 //#endregion
-export { init_globalthis as n, globalthis_default as t };
+export { globalthis_default as t };

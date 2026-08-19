@@ -1,18 +1,17 @@
-import { defineConfig } from "@lovable.dev/vite-tanstack-config";
-import { loadEnv } from 'vite';
+// vite.config.ts
+import { defineConfig } from '@lovable.dev/vite-tanstack-config';
 
-export default defineConfig(({ mode }) => {
-  // Load env file
-  const env = loadEnv(mode, process.cwd(), '');
-  
-  return {
-    tanstackStart: {
-      server: { entry: "server" },
-    },
-    // Define env variables for the app
-    define: {
-      'process.env.DATABASE_URL': JSON.stringify(env.DATABASE_URL),
-      'process.env.TURSO_AUTH_TOKEN': JSON.stringify(env.TURSO_AUTH_TOKEN),
-    },
-  };
+export default defineConfig({
+  tanstackStart: {
+    server: { entry: 'server' },
+  },
+  // Make sure environment variables are loaded
+  server: {
+    port: 8080,
+  },
+  // This ensures environment variables are available
+  define: {
+    'import.meta.env.VITE_TURSO_URL': JSON.stringify(process.env.VITE_TURSO_URL),
+    'import.meta.env.VITE_TURSO_AUTH_TOKEN': JSON.stringify(process.env.VITE_TURSO_AUTH_TOKEN),
+  },
 });

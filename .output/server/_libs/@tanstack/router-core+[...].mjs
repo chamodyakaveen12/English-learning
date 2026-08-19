@@ -1,7 +1,54 @@
-import { A as createLRUCache, M as decodePath, O as rootRouteId, S as getStylesheetHref, _ as GLOBAL_TSR, b as createInlineCssStyleAsset, j as invariant, v as TSR_SCRIPT_BARRIER_ID, y as createInlineCssPlaceholderAsset } from "./react-router+[...].mjs";
-import { n as init_globalthis, t as globalthis_default } from "../@libsql/client+[...].mjs";
+import { _ as invariant, g as createLRUCache, l as GLOBAL_TSR, m as rootRouteId, u as TSR_SCRIPT_BARRIER_ID, v as decodePath } from "./react-router+[...].mjs";
+import { t as globalthis_default } from "../@libsql/client+[...].mjs";
+//#region node_modules/@tanstack/router-core/dist/esm/manifest.js
+function getAssetCrossOrigin(assetCrossOrigin, kind) {
+	if (!assetCrossOrigin) return;
+	if (typeof assetCrossOrigin === "string") return assetCrossOrigin;
+	return assetCrossOrigin[kind];
+}
+function getManifestScriptFormat(manifest) {
+	return manifest?.scriptFormat ?? "module";
+}
+function getScriptPreloadAttrs(manifest, link, assetCrossOrigin) {
+	const preloadLink = resolveManifestAssetLink(link);
+	const crossOrigin = getAssetCrossOrigin(assetCrossOrigin, "script") ?? preloadLink.crossOrigin;
+	return {
+		...getManifestScriptFormat(manifest) === "iife" ? {
+			rel: "preload",
+			as: "script"
+		} : { rel: "modulepreload" },
+		href: preloadLink.href,
+		...crossOrigin ? { crossOrigin } : {}
+	};
+}
+function resolveManifestAssetLink(link) {
+	if (typeof link === "string") return {
+		href: link,
+		crossOrigin: void 0
+	};
+	return link;
+}
+function getStylesheetHref(asset) {
+	return resolveManifestCssLink(asset).href;
+}
+function resolveManifestCssLink(link) {
+	if (typeof link === "string") return {
+		href: link,
+		crossOrigin: void 0
+	};
+	return link;
+}
+function createInlineCssStyleAsset(css) {
+	return {
+		attrs: { suppressHydrationWarning: true },
+		children: css
+	};
+}
+function createInlineCssPlaceholderAsset() {
+	return { attrs: { suppressHydrationWarning: true } };
+}
+//#endregion
 //#region node_modules/seroval/dist/index.js
-init_globalthis();
 var SYM_ASYNC_ITERATOR = Symbol.asyncIterator;
 var SYM_HAS_INSTANCE = Symbol.hasInstance;
 var SYM_IS_CONCAT_SPREADABLE = Symbol.isConcatSpreadable;
@@ -3589,4 +3636,4 @@ function mergeHeaders(...headers) {
 	}, new Headers());
 }
 //#endregion
-export { defaultSerovalPlugins as a, makeSerovalPlugin as c, toCrossJSONStream as d, getOrigin as i, fromJSON as l, attachRouterServerSsrUtils as n, createRawStreamRPCPlugin as o, getNormalizedURL as r, createSerializationAdapter as s, mergeHeaders as t, toCrossJSONAsync as u };
+export { defaultSerovalPlugins as a, makeSerovalPlugin as c, toCrossJSONStream as d, getScriptPreloadAttrs as f, resolveManifestCssLink as h, getOrigin as i, fromJSON as l, resolveManifestAssetLink as m, attachRouterServerSsrUtils as n, createRawStreamRPCPlugin as o, getStylesheetHref as p, getNormalizedURL as r, createSerializationAdapter as s, mergeHeaders as t, toCrossJSONAsync as u };

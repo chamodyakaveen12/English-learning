@@ -1,4 +1,4 @@
-// src/lib/store.tsx - Complete Hybrid Version
+// src/lib/store.tsx
 import {
   createContext,
   useCallback,
@@ -7,11 +7,15 @@ import {
   useMemo,
   useState,
   type ReactNode,
-} from 'react';
-import { query, queryOne, db, testConnection } from './db';
+} from "react";
+import { tursoDb } from "./turso";
 
-// ============= TYPES =============
+// ============================================
+// TYPE DEFINITIONS
+// ============================================
+
 export type Folder = { id: string; name: string; parentId: string | null };
+
 export type Word = {
   id: string;
   word: string;
@@ -22,20 +26,43 @@ export type Word = {
   difficulty: string;
   level: string;
   source: string;
-  createdAt: string;
-  due: string;
+  createdAt: string; // ISO date (yyyy-mm-dd)
+  due: string; // yyyy-mm-dd
   stage: number;
   history: { date: string; rating: string }[];
 };
+
 export type WordLink = { id: string; a: string; b: string; type: string };
+
 export type ActivityType = { id: string; name: string };
-export type ActivityLog = { id: string; date: string; typeId: string; minutes: number; note?: string };
-export type DayBlock = { id: string; date: string; hour: number; label: string; typeId: string | null };
+
+export type ActivityLog = {
+  id: string;
+  date: string;
+  typeId: string;
+  minutes: number;
+  note?: string;
+};
+
+export type DayBlock = {
+  id: string;
+  date: string;
+  hour: number;
+  label: string;
+  typeId: string | null;
+};
+
 export type Settings = {
-  schedule: number[];
-  dropdowns: { difficulty: string[]; level: string[]; source: string[]; linkTypes: string[] };
+  schedule: number[]; // days per stage
+  dropdowns: {
+    difficulty: string[];
+    level: string[];
+    source: string[];
+    linkTypes: string[];
+  };
   reminder: { time: string; onDue: boolean; threshold: number; onIdle: boolean };
 };
+
 export type DB = {
   words: Word[];
   folders: Folder[];
@@ -46,14 +73,25 @@ export type DB = {
   settings: Settings;
 };
 
-// ============= HELPERS =============
+// ============================================
+// HELPERS
+// ============================================
+
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+
 export const today = () => new Date().toISOString().slice(0, 10);
+
 export const addDays = (iso: string, n: number) => {
-  const d = new Date(iso + 'T00:00:00');
+  const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + n);
   return d.toISOString().slice(0, 10);
 };
+
+const KEY = "english-os-v1";
+
+// ============================================
+// EMPTY DATABASE
+// ============================================
 
 export function emptyDB(): DB {
   return {
@@ -61,27 +99,31 @@ export function emptyDB(): DB {
     folders: [],
     links: [],
     activityTypes: [
-      { id: 'a-voc', name: 'Vocabulary' },
-      { id: 'a-read', name: 'Reading' },
-      { id: 'a-write', name: 'Writing' },
-      { id: 'a-listen', name: 'Listening' },
-      { id: 'a-speak', name: 'Speaking' },
-      { id: 'a-gram', name: 'Grammar' },
+      { id: "a-voc", name: "Vocabulary" },
+      { id: "a-read", name: "Reading" },
+      { id: "a-write", name: "Writing" },
+      { id: "a-listen", name: "Listening" },
+      { id: "a-speak", name: "Speaking" },
+      { id: "a-gram", name: "Grammar" },
     ],
     logs: [],
     blocks: [],
     settings: {
       schedule: [1, 2, 4, 7, 14, 30],
       dropdowns: {
-        difficulty: ['Again', 'Hard', 'Good', 'Easy'],
-        level: ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'],
-        source: ['Book', 'Movie', 'YouTube', 'University', 'Conversation', 'News'],
-        linkTypes: ['related to', 'similar meaning', 'opposite of', 'same topic'],
+        difficulty: ["Again", "Hard", "Good", "Easy"],
+        level: ["A1", "A2", "B1", "B2", "C1", "C2"],
+        source: ["Book", "Movie", "YouTube", "University", "Conversation", "News"],
+        linkTypes: ["related to", "similar meaning", "opposite of", "same topic"],
       },
-      reminder: { time: '20:00', onDue: true, threshold: 10, onIdle: true },
+      reminder: { time: "20:00", onDue: true, threshold: 10, onIdle: true },
     },
   };
 }
+
+// ============================================
+// SEED DATABASE
+// ============================================
 
 function seedDB(): DB {
   const db = emptyDB();
@@ -90,23 +132,24 @@ function seedDB(): DB {
     db.folders.push(f);
     return f.id;
   };
-  const cima = mk('CIMA', null);
-  const ma = mk('Management Accounting', cima);
-  const budg = mk('Budgeting', ma);
-  mk('Costing', ma);
-  const daily = mk('Daily English', null);
-  const idioms = mk('Idioms', daily);
-  const tv = mk('TV Series', null);
-  const suits = mk('Suits', tv);
+
+  const cima = mk("CIMA", null);
+  const ma = mk("Management Accounting", cima);
+  const budg = mk("Budgeting", ma);
+  mk("Costing", ma);
+  const daily = mk("Daily English", null);
+  const idioms = mk("Idioms", daily);
+  const tv = mk("TV Series", null);
+  const suits = mk("Suits", tv);
 
   const words: [string, string, string, string, string, string, string[]][] = [
-    ['Allocate', 'To distribute something for a particular purpose', 'The manager allocated resources to the project.', budg, 'Hard', 'University', ['Finance', 'Work']],
-    ['Variance', 'The difference between planned and actual results', 'The team analysed the cost variance.', budg, 'Good', 'University', ['Finance']],
-    ['Forecast', 'To predict a future figure or trend', 'We forecast a rise in demand.', budg, 'Good', 'Book', ['Finance']],
-    ['Prudent', 'Acting with care and thought for the future', 'A prudent approach to spending.', cima, 'Hard', 'News', ['Important']],
-    ['Hit the ground running', 'To start something quickly and successfully', 'She hit the ground running in her new role.', idioms, 'Again', 'Conversation', ['Idiom']],
-    ['Leverage', 'To use something to maximum advantage', 'They leveraged their network to close the deal.', suits, 'Easy', 'Movie', ['Work']],
-    ['Compelling', 'Evoking strong interest or conviction', 'He made a compelling argument.', suits, 'Good', 'Movie', []],
+    ["Allocate", "To distribute something for a particular purpose", "The manager allocated resources to the project.", budg, "Hard", "University", ["Finance", "Work"]],
+    ["Variance", "The difference between planned and actual results", "The team analysed the cost variance.", budg, "Good", "University", ["Finance"]],
+    ["Forecast", "To predict a future figure or trend", "We forecast a rise in demand.", budg, "Good", "Book", ["Finance"]],
+    ["Prudent", "Acting with care and thought for the future", "A prudent approach to spending.", cima, "Hard", "News", ["Important"]],
+    ["Hit the ground running", "To start something quickly and successfully", "She hit the ground running in her new role.", idioms, "Again", "Conversation", ["Idiom"]],
+    ["Leverage", "To use something to maximum advantage", "They leveraged their network to close the deal.", suits, "Easy", "Movie", ["Work"]],
+    ["Compelling", "Evoking strong interest or conviction", "He made a compelling argument.", suits, "Good", "Movie", []],
   ];
 
   words.forEach(([w, m, ex, folderId, difficulty, source, tags], i) => {
@@ -119,7 +162,7 @@ function seedDB(): DB {
       folderId,
       tags,
       difficulty,
-      level: 'B2',
+      level: "B2",
       source,
       createdAt: created,
       due: addDays(today(), i % 3 === 0 ? 0 : i - 2),
@@ -128,14 +171,18 @@ function seedDB(): DB {
     });
   });
 
-  db.links.push({ id: uid(), a: db.words[0]!.id, b: db.words[2]!.id, type: 'same topic' });
+  db.links.push({ id: uid(), a: db.words[0]!.id, b: db.words[2]!.id, type: "same topic" });
   db.logs.push(
-    { id: uid(), date: today(), typeId: 'a-voc', minutes: 30 },
-    { id: uid(), date: today(), typeId: 'a-read', minutes: 45 },
-    { id: uid(), date: addDays(today(), -1), typeId: 'a-speak', minutes: 20 },
+    { id: uid(), date: today(), typeId: "a-voc", minutes: 30 },
+    { id: uid(), date: today(), typeId: "a-read", minutes: 45 },
+    { id: uid(), date: addDays(today(), -1), typeId: "a-speak", minutes: 20 }
   );
   return db;
 }
+
+// ============================================
+// FOLDER HELPERS
+// ============================================
 
 export function folderPath(folders: Folder[], id: string | null): Folder[] {
   const out: Folder[] = [];
@@ -148,8 +195,8 @@ export function folderPath(folders: Folder[], id: string | null): Folder[] {
 }
 
 export function folderLabel(folders: Folder[], id: string | null) {
-  if (!id) return 'Unfiled';
-  return folderPath(folders, id).map((f) => f.name).join(' → ') || 'Unfiled';
+  if (!id) return "Unfiled";
+  return folderPath(folders, id).map((f) => f.name).join(" → ") || "Unfiled";
 }
 
 export function descendantIds(folders: Folder[], id: string): string[] {
@@ -168,16 +215,22 @@ export function isDescendant(folders: Folder[], candidate: string, ancestor: str
   return descendantIds(folders, ancestor).includes(candidate);
 }
 
-export function applyReview(w: Word, rating: 'Again' | 'Hard' | 'Good' | 'Easy', schedule: number[]) {
+// ============================================
+// SRS (Spaced Repetition System)
+// ============================================
+
+export function applyReview(w: Word, rating: "Again" | "Hard" | "Good" | "Easy", schedule: number[]) {
   let stage = w.stage;
-  if (rating === 'Again') stage = 0;
-  else if (rating === 'Hard') stage = Math.max(0, stage);
-  else if (rating === 'Good') stage = stage + 1;
+  if (rating === "Again") stage = 0;
+  else if (rating === "Hard") stage = Math.max(0, stage);
+  else if (rating === "Good") stage = stage + 1;
   else stage = stage + 2;
+
   const idx = Math.min(stage, schedule.length - 1);
   let days = schedule[idx] ?? 1;
-  if (rating === 'Again') days = 0;
-  if (rating === 'Hard') days = Math.max(1, Math.round(days / 2));
+  if (rating === "Again") days = 0;
+  if (rating === "Hard") days = Math.max(1, Math.round(days / 2));
+
   w.stage = stage;
   w.difficulty = rating;
   w.due = addDays(today(), days);
@@ -187,354 +240,204 @@ export function applyReview(w: Word, rating: 'Again' | 'Hard' | 'Good' | 'Easy',
 
 export const minutesFmt = (m: number) => `${Math.floor(m / 60)}h ${m % 60}m`;
 
-// ============= LOCAL STORAGE KEY =============
-const BACKUP_KEY = 'english-os-v1-backup';
+// ============================================
+// STORE CONTEXT
+// ============================================
 
-// ============= TURSO DATABASE FUNCTIONS =============
-
-async function loadFromTurso(): Promise<DB> {
-  const dbData = emptyDB();
-
-  try {
-    console.log('🔄 Loading data from Turso...');
-    
-    // Test connection first
-    const connected = await testConnection();
-    if (!connected) {
-      console.warn('⚠️ Cannot connect to Turso, trying localStorage backup...');
-      const backup = localStorage.getItem(BACKUP_KEY);
-      if (backup) {
-        const parsed = JSON.parse(backup);
-        if (parsed.words && parsed.words.length > 0) {
-          dbData.words = parsed.words;
-          dbData.folders = parsed.folders || [];
-          console.log(`✅ Loaded ${dbData.words.length} words from localStorage backup`);
-          return dbData;
-        }
-      }
-      return dbData;
-    }
-
-    // Load folders
-    const folders = await query<Folder>('SELECT * FROM folders ORDER BY name');
-    dbData.folders = folders || [];
-    console.log(`✅ Loaded ${dbData.folders.length} folders`);
-
-    // Load words
-    const words = await query<any>('SELECT * FROM words ORDER BY word');
-    if (words && words.length > 0) {
-      dbData.words = words.map(w => ({
-        ...w,
-        tags: typeof w.tags === 'string' ? JSON.parse(w.tags) : (w.tags || []),
-        history: typeof w.history === 'string' ? JSON.parse(w.history) : (w.history || []),
-      }));
-    }
-    console.log(`✅ Loaded ${dbData.words.length} words from Turso`);
-
-    // If no words found in Turso, try localStorage backup
-    if (dbData.words.length === 0) {
-      console.log('📝 No words in Turso, checking localStorage backup...');
-      const backup = localStorage.getItem(BACKUP_KEY);
-      if (backup) {
-        const parsed = JSON.parse(backup);
-        if (parsed.words && parsed.words.length > 0) {
-          dbData.words = parsed.words;
-          dbData.folders = parsed.folders || [];
-          console.log(`✅ Loaded ${dbData.words.length} words from localStorage backup`);
-        }
-      }
-    }
-
-    // Load word links
-    const links = await query<WordLink>('SELECT * FROM word_links');
-    dbData.links = links || [];
-    console.log(`✅ Loaded ${dbData.links.length} links`);
-
-    // Load activity types
-    const activityTypes = await query<ActivityType>('SELECT * FROM activity_types ORDER BY name');
-    dbData.activityTypes = activityTypes || [];
-    console.log(`✅ Loaded ${dbData.activityTypes.length} activity types`);
-
-    // Load activity logs
-    const logs = await query<ActivityLog>('SELECT * FROM activity_logs ORDER BY log_date DESC');
-    dbData.logs = logs || [];
-    console.log(`✅ Loaded ${dbData.logs.length} logs`);
-
-    // Load day blocks
-    const blocks = await query<DayBlock>('SELECT * FROM day_blocks ORDER BY block_date, hour');
-    dbData.blocks = blocks || [];
-    console.log(`✅ Loaded ${dbData.blocks.length} day blocks`);
-
-    // Load settings
-    const settings = await queryOne<any>('SELECT schedule, dropdowns, reminder FROM settings WHERE id = 1');
-    if (settings) {
-      dbData.settings = {
-        schedule: typeof settings.schedule === 'string' ? JSON.parse(settings.schedule) : settings.schedule,
-        dropdowns: typeof settings.dropdowns === 'string' ? JSON.parse(settings.dropdowns) : settings.dropdowns,
-        reminder: typeof settings.reminder === 'string' ? JSON.parse(settings.reminder) : settings.reminder,
-      };
-    }
-    console.log('✅ Settings loaded');
-
-    // Save to localStorage as backup
-    try {
-      localStorage.setItem(BACKUP_KEY, JSON.stringify(dbData));
-    } catch (e) {}
-
-    return dbData;
-  } catch (error) {
-    console.error('❌ Error loading from Turso:', error);
-    
-    // Try localStorage backup on error
-    try {
-      const backup = localStorage.getItem(BACKUP_KEY);
-      if (backup) {
-        const parsed = JSON.parse(backup);
-        if (parsed.words) {
-          dbData.words = parsed.words;
-          dbData.folders = parsed.folders || [];
-          console.log(`✅ Loaded ${dbData.words.length} words from localStorage backup (after error)`);
-        }
-      }
-    } catch (e) {
-      console.error('❌ Backup load failed:', e);
-    }
-    
-    return dbData;
-  }
-}
-
-// ============= SAVE TO TURSO =============
-async function saveToTurso(data: DB) {
-  try {
-    console.log('💾 Starting save to Turso...');
-    console.log('📊 Words to save:', data.words.length);
-    
-    // Test connection first
-    const connected = await testConnection();
-    if (!connected) {
-      console.error('❌ Cannot connect to Turso, data not saved to database');
-      // Still save to localStorage
-      try {
-        localStorage.setItem(BACKUP_KEY, JSON.stringify(data));
-        console.log('💾 Saved to localStorage backup (Turso offline)');
-      } catch (e) {}
-      return;
-    }
-    
-    // Clear existing data
-    await db.execute('DELETE FROM folders');
-    await db.execute('DELETE FROM words');
-    await db.execute('DELETE FROM word_links');
-    await db.execute('DELETE FROM activity_types');
-    await db.execute('DELETE FROM activity_logs');
-    await db.execute('DELETE FROM day_blocks');
-    await db.execute('DELETE FROM settings');
-
-    // Insert folders
-    for (const folder of data.folders) {
-      await db.execute({
-        sql: 'INSERT INTO folders (id, name, parent_id) VALUES (?, ?, ?)',
-        args: [folder.id, folder.name, folder.parentId],
-      });
-    }
-    console.log(`✅ Saved ${data.folders.length} folders`);
-
-    // Insert words
-    for (const word of data.words) {
-      await db.execute({
-        sql: `INSERT INTO words (id, word, meaning, example, folder_id, tags, difficulty, level, source, created_at, due, stage, history) 
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        args: [
-          word.id,
-          word.word,
-          word.meaning,
-          word.example,
-          word.folderId,
-          JSON.stringify(word.tags),
-          word.difficulty,
-          word.level,
-          word.source,
-          word.createdAt,
-          word.due,
-          word.stage,
-          JSON.stringify(word.history),
-        ],
-      });
-    }
-    console.log(`✅ Saved ${data.words.length} words`);
-
-    // Insert word links
-    for (const link of data.links) {
-      await db.execute({
-        sql: 'INSERT INTO word_links (id, word_a_id, word_b_id, type) VALUES (?, ?, ?, ?)',
-        args: [link.id, link.a, link.b, link.type],
-      });
-    }
-    console.log(`✅ Saved ${data.links.length} links`);
-
-    // Insert activity types
-    for (const type of data.activityTypes) {
-      await db.execute({
-        sql: 'INSERT INTO activity_types (id, name) VALUES (?, ?)',
-        args: [type.id, type.name],
-      });
-    }
-    console.log(`✅ Saved ${data.activityTypes.length} activity types`);
-
-    // Insert activity logs
-    for (const log of data.logs) {
-      await db.execute({
-        sql: 'INSERT INTO activity_logs (id, log_date, type_id, minutes, note) VALUES (?, ?, ?, ?, ?)',
-        args: [log.id, log.date, log.typeId, log.minutes, log.note || null],
-      });
-    }
-    console.log(`✅ Saved ${data.logs.length} logs`);
-
-    // Insert day blocks
-    for (const block of data.blocks) {
-      await db.execute({
-        sql: 'INSERT INTO day_blocks (id, block_date, hour, label, type_id) VALUES (?, ?, ?, ?, ?)',
-        args: [block.id, block.date, block.hour, block.label, block.typeId],
-      });
-    }
-    console.log(`✅ Saved ${data.blocks.length} day blocks`);
-
-    // Insert settings
-    await db.execute({
-      sql: 'INSERT INTO settings (id, schedule, dropdowns, reminder) VALUES (1, ?, ?, ?)',
-      args: [
-        JSON.stringify(data.settings.schedule),
-        JSON.stringify(data.settings.dropdowns),
-        JSON.stringify(data.settings.reminder),
-      ],
-    });
-
-    // Save to localStorage as backup
-    try {
-      localStorage.setItem(BACKUP_KEY, JSON.stringify(data));
-      console.log('💾 Saved to localStorage backup');
-    } catch (e) {}
-
-    console.log('✅ All data saved to Turso successfully!');
-  } catch (error) {
-    console.error('❌ Error saving to Turso:', error);
-    // Still save to localStorage
-    try {
-      localStorage.setItem(BACKUP_KEY, JSON.stringify(data));
-      console.log('💾 Saved to localStorage backup (Turso error)');
-    } catch (e) {}
-    throw error;
-  }
-}
-
-// ============= STORE CONTEXT =============
 type Ctx = {
   db: DB;
   ready: boolean;
   loading: boolean;
+  userId: string | null;
+  isAuthenticated: boolean;
   update: (fn: (d: DB) => void) => void;
   reset: () => void;
+  saveToTurso: (userId: string, data: DB) => Promise<{ success: boolean; error?: any }>;
+  loadFromTurso: (userId: string) => Promise<{ success: boolean; data?: DB; error?: any }>;
+  syncFromCloud: () => Promise<{ success: boolean; data?: DB; error?: any }>;
 };
 
 const StoreContext = createContext<Ctx | null>(null);
 
+// ============================================
+// STORE PROVIDER
+// ============================================
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<DB>(() => emptyDB());
   const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Load data from Turso on mount
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        
-        // Test connection first
-        console.log('🔌 Testing database connection...');
-        const connected = await testConnection();
-        console.log('🔌 Connection test result:', connected);
-        
-        let data = await loadFromTurso();
-        
-        // Check if we got any data, if not seed the database
-        if (data.words.length === 0 && data.folders.length === 0) {
-          console.log('📝 No data found, seeding database...');
-          const seedData = seedDB();
-          await saveToTurso(seedData);
-          data = seedData;
-        }
-        
-        setDb(data);
-        console.log('✅ Data loaded successfully, words:', data.words.length);
-      } catch (error) {
-        console.error('❌ Failed to load data:', error);
-        // Fallback to seed data
-        const seedData = seedDB();
-        setDb(seedData);
-      } finally {
-        setLoading(false);
-        setReady(true);
+  // ============================================
+  // TURSO FUNCTIONS
+  // ============================================
+
+  const saveToTurso = useCallback(async (userId: string, data: DB) => {
+    try {
+      const result = await tursoDb.save(userId, data);
+      if (!result.success) {
+        console.error("❌ Turso save failed:", result.error);
+      } else {
+        console.log("✅ Turso save successful for user:", userId);
       }
-    };
-    loadData();
+      return result;
+    } catch (error) {
+      console.error("❌ Turso save error:", error);
+      return { success: false, error };
+    }
   }, []);
 
-  // ============= UPDATE FUNCTION =============
+  const loadFromTurso = useCallback(async (userId: string) => {
+    try {
+      const result = await tursoDb.load(userId);
+      if (result.success && result.data) {
+        const loadedData = { ...emptyDB(), ...result.data };
+        setDb(loadedData);
+        localStorage.setItem(KEY, JSON.stringify(loadedData));
+        console.log("✅ Turso load successful for user:", userId);
+        return { success: true, data: loadedData };
+      }
+      console.log("ℹ️ No data in Turso for user:", userId);
+      return { success: true, data: null };
+    } catch (error) {
+      console.error("❌ Turso load error:", error);
+      return { success: false, error };
+    }
+  }, []);
+
+  const syncFromCloud = useCallback(async () => {
+    if (!userId) {
+      console.warn("⚠️ No user ID for cloud sync");
+      return { success: false, error: "No user logged in" };
+    }
+    console.log("🔄 Syncing from Turso...");
+    const result = await loadFromTurso(userId);
+    if (result.success && result.data) {
+      setDb(result.data);
+      console.log("✅ Sync complete");
+    }
+    return result;
+  }, [userId, loadFromTurso]);
+
+  // ============================================
+  // UPDATE FUNCTION
+  // ============================================
+
   const update = useCallback((fn: (d: DB) => void) => {
     setDb((prev) => {
       const next: DB = JSON.parse(JSON.stringify(prev));
       fn(next);
-      
-      console.log('📝 Update called, words count:', next.words.length);
-      
-      // Save to localStorage (immediate, always works)
+
+      // Save to localStorage (fallback)
       try {
-        localStorage.setItem(BACKUP_KEY, JSON.stringify(next));
-        console.log('💾 Saved to localStorage backup');
-      } catch (e) {
-        console.warn('⚠️ Could not save to localStorage:', e);
+        localStorage.setItem(KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
       }
-      
-      // Save to Turso (async)
-      saveToTurso(next)
-        .then(() => {
-          console.log('✅ Data saved to Turso successfully!');
-        })
-        .catch((error) => {
-          console.error('❌ Failed to save to Turso:', error);
-        });
-      
+
+      // Save to Turso if authenticated
+      if (userId) {
+        saveToTurso(userId, next);
+      }
+
       return next;
     });
-  }, []);
+  }, [userId, saveToTurso]);
 
-  // Reset function
-  const reset = useCallback(async () => {
+  // ============================================
+  // RESET FUNCTION
+  // ============================================
+
+  const reset = useCallback(() => {
     const fresh = seedDB();
-    try {
-      await saveToTurso(fresh);
-      localStorage.setItem(BACKUP_KEY, JSON.stringify(fresh));
-      setDb(fresh);
-      console.log('✅ Database reset successfully');
-    } catch (error) {
-      console.error('❌ Failed to reset database:', error);
+    localStorage.setItem(KEY, JSON.stringify(fresh));
+    setDb(fresh);
+    if (userId) {
+      saveToTurso(userId, fresh);
     }
-  }, []);
+  }, [userId, saveToTurso]);
+
+  // ============================================
+  // INIT - LOAD DATA
+  // ============================================
+
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+
+      // Check for existing session (Supabase Auth)
+      // Note: You'll need to import supabase if using it
+      // For now, we'll check localStorage for userId
+      const storedUserId = localStorage.getItem("english-os-user-id");
+      
+      if (storedUserId) {
+        setUserId(storedUserId);
+        setIsAuthenticated(true);
+        
+        // Try loading from Turso first
+        const result = await loadFromTurso(storedUserId);
+        if (!result.success || !result.data) {
+          // Fallback to localStorage
+          try {
+            const raw = localStorage.getItem(KEY);
+            if (raw) {
+              setDb({ ...emptyDB(), ...JSON.parse(raw) });
+            } else {
+              setDb(seedDB());
+            }
+          } catch {
+            setDb(seedDB());
+          }
+        }
+      } else {
+        // No user - load from localStorage only
+        try {
+          const raw = localStorage.getItem(KEY);
+          if (raw) {
+            setDb({ ...emptyDB(), ...JSON.parse(raw) });
+          } else {
+            setDb(seedDB());
+          }
+        } catch {
+          setDb(seedDB());
+        }
+      }
+
+      setReady(true);
+      setLoading(false);
+    };
+
+    init();
+  }, [loadFromTurso]);
+
+  // ============================================
+  // CONTEXT VALUE
+  // ============================================
 
   const value = useMemo(() => ({
     db,
     ready,
     loading,
+    userId,
+    isAuthenticated,
     update,
     reset,
-  }), [db, ready, loading, update, reset]);
+    saveToTurso,
+    loadFromTurso,
+    syncFromCloud,
+  }), [db, ready, loading, userId, isAuthenticated, update, reset, saveToTurso, loadFromTurso, syncFromCloud]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
 
+// ============================================
+// USE STORE HOOK
+// ============================================
+
 export function useStore() {
   const ctx = useContext(StoreContext);
-  if (!ctx) throw new Error('useStore must be used inside StoreProvider');
+  if (!ctx) throw new Error("useStore must be used inside StoreProvider");
   return ctx;
 }

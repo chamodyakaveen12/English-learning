@@ -1,29 +1,43 @@
-# Dependencies
-node_modules/
-.pnp/
-.pnp.js
-
-# Environment variables / secrets
+# ============================================
+# SECRETS - NEVER UPLOAD TO GITHUB!
+# ============================================
 .env
 .env.local
 .env.*.local
 
-# Production / build files
+# ============================================
+# DEPENDENCIES
+# ============================================
+node_modules/
+.pnp/
+.pnp.js
+
+# ============================================
+# BUILD OUTPUT
+# ============================================
 dist/
 dist-ssr/
+.output/
+.vinxi/
+.tanstack/
 
-# Cache
-.vite/
-.cache/
-
-# Logs
-*.log
+# ============================================
+# LOGS
+# ============================================
 logs/
+*.log
 
-# IDE
+# ============================================
+# IDE FILES
+# ============================================
 .vscode/
 .idea/
-
-# OS files
 .DS_Store
-Thumbs.db
+*.swp
+*.swo
+
+# ============================================
+# CACHE
+# ============================================
+.vite/
+.cache/
