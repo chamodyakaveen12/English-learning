@@ -1,4 +1,4 @@
-// src/lib/store.tsx - Fixed Turso Database Version
+// src/lib/store.tsx - Turso Database Version with Full Error Handling
 import {
   createContext,
   useCallback,
@@ -187,59 +187,72 @@ export function applyReview(w: Word, rating: 'Again' | 'Hard' | 'Good' | 'Easy',
 
 export const minutesFmt = (m: number) => `${Math.floor(m / 60)}h ${m % 60}m`;
 
-// ============= TURSO DATABASE FUNCTIONS =============
+// ============= TURSO DATABASE FUNCTIONS WITH ERROR HANDLING =============
 
 async function loadFromTurso(): Promise<DB> {
   const dbData = emptyDB();
 
   try {
+    console.log('🔄 Loading data from Turso...');
+    
     // Load folders
     const folders = await query<Folder>('SELECT * FROM folders ORDER BY name');
-    dbData.folders = folders;
+    dbData.folders = folders || [];
+    console.log(`✅ Loaded ${dbData.folders.length} folders`);
 
     // Load words
     const words = await query<any>('SELECT * FROM words ORDER BY word');
-    dbData.words = words.map(w => ({
-      ...w,
-      tags: JSON.parse(w.tags),
-      history: JSON.parse(w.history),
-    }));
+    if (words && words.length > 0) {
+      dbData.words = words.map(w => ({
+        ...w,
+        tags: typeof w.tags === 'string' ? JSON.parse(w.tags) : (w.tags || []),
+        history: typeof w.history === 'string' ? JSON.parse(w.history) : (w.history || []),
+      }));
+    }
+    console.log(`✅ Loaded ${dbData.words.length} words`);
 
     // Load word links
     const links = await query<WordLink>('SELECT * FROM word_links');
-    dbData.links = links;
+    dbData.links = links || [];
+    console.log(`✅ Loaded ${dbData.links.length} links`);
 
     // Load activity types
     const activityTypes = await query<ActivityType>('SELECT * FROM activity_types ORDER BY name');
-    dbData.activityTypes = activityTypes;
+    dbData.activityTypes = activityTypes || [];
+    console.log(`✅ Loaded ${dbData.activityTypes.length} activity types`);
 
     // Load activity logs
     const logs = await query<ActivityLog>('SELECT * FROM activity_logs ORDER BY log_date DESC');
-    dbData.logs = logs;
+    dbData.logs = logs || [];
+    console.log(`✅ Loaded ${dbData.logs.length} logs`);
 
     // Load day blocks
     const blocks = await query<DayBlock>('SELECT * FROM day_blocks ORDER BY block_date, hour');
-    dbData.blocks = blocks;
+    dbData.blocks = blocks || [];
+    console.log(`✅ Loaded ${dbData.blocks.length} day blocks`);
 
     // Load settings
     const settings = await queryOne<any>('SELECT schedule, dropdowns, reminder FROM settings WHERE id = 1');
     if (settings) {
       dbData.settings = {
-        schedule: JSON.parse(settings.schedule),
-        dropdowns: JSON.parse(settings.dropdowns),
-        reminder: JSON.parse(settings.reminder),
+        schedule: typeof settings.schedule === 'string' ? JSON.parse(settings.schedule) : settings.schedule,
+        dropdowns: typeof settings.dropdowns === 'string' ? JSON.parse(settings.dropdowns) : settings.dropdowns,
+        reminder: typeof settings.reminder === 'string' ? JSON.parse(settings.reminder) : settings.reminder,
       };
     }
+    console.log('✅ Settings loaded');
 
     return dbData;
   } catch (error) {
-    console.error('Error loading from Turso:', error);
+    console.error('❌ Error loading from Turso:', error);
     return dbData;
   }
 }
 
 async function saveToTurso(data: DB) {
   try {
+    console.log('💾 Saving data to Turso...');
+    
     // Clear existing data
     await db.execute('DELETE FROM folders');
     await db.execute('DELETE FROM words');
@@ -256,6 +269,7 @@ async function saveToTurso(data: DB) {
         args: [folder.id, folder.name, folder.parentId],
       });
     }
+    console.log(`✅ Saved ${data.folders.length} folders`);
 
     // Insert words
     for (const word of data.words) {
@@ -279,6 +293,7 @@ async function saveToTurso(data: DB) {
         ],
       });
     }
+    console.log(`✅ Saved ${data.words.length} words`);
 
     // Insert word links
     for (const link of data.links) {
@@ -287,6 +302,7 @@ async function saveToTurso(data: DB) {
         args: [link.id, link.a, link.b, link.type],
       });
     }
+    console.log(`✅ Saved ${data.links.length} links`);
 
     // Insert activity types
     for (const type of data.activityTypes) {
@@ -295,6 +311,7 @@ async function saveToTurso(data: DB) {
         args: [type.id, type.name],
       });
     }
+    console.log(`✅ Saved ${data.activityTypes.length} activity types`);
 
     // Insert activity logs
     for (const log of data.logs) {
@@ -303,6 +320,7 @@ async function saveToTurso(data: DB) {
         args: [log.id, log.date, log.typeId, log.minutes, log.note || null],
       });
     }
+    console.log(`✅ Saved ${data.logs.length} logs`);
 
     // Insert day blocks
     for (const block of data.blocks) {
@@ -311,6 +329,7 @@ async function saveToTurso(data: DB) {
         args: [block.id, block.date, block.hour, block.label, block.typeId],
       });
     }
+    console.log(`✅ Saved ${data.blocks.length} day blocks`);
 
     // Insert settings
     await db.execute({
@@ -322,7 +341,7 @@ async function saveToTurso(data: DB) {
       ],
     });
 
-    console.log('✅ Data saved to Turso successfully');
+    console.log('✅ All data saved to Turso successfully!');
   } catch (error) {
     console.error('❌ Error saving to Turso:', error);
     throw error;
