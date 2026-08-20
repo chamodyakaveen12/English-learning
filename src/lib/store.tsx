@@ -8,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { tursoDb } from "./turso";
 
 // ============================================
 // TYPE DEFINITIONS
@@ -77,7 +76,8 @@ export type DB = {
 // HELPERS
 // ============================================
 
-export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+export const uid = () =>
+  Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
 export const today = () => new Date().toISOString().slice(0, 10);
 
@@ -143,13 +143,69 @@ function seedDB(): DB {
   const suits = mk("Suits", tv);
 
   const words: [string, string, string, string, string, string, string[]][] = [
-    ["Allocate", "To distribute something for a particular purpose", "The manager allocated resources to the project.", budg, "Hard", "University", ["Finance", "Work"]],
-    ["Variance", "The difference between planned and actual results", "The team analysed the cost variance.", budg, "Good", "University", ["Finance"]],
-    ["Forecast", "To predict a future figure or trend", "We forecast a rise in demand.", budg, "Good", "Book", ["Finance"]],
-    ["Prudent", "Acting with care and thought for the future", "A prudent approach to spending.", cima, "Hard", "News", ["Important"]],
-    ["Hit the ground running", "To start something quickly and successfully", "She hit the ground running in her new role.", idioms, "Again", "Conversation", ["Idiom"]],
-    ["Leverage", "To use something to maximum advantage", "They leveraged their network to close the deal.", suits, "Easy", "Movie", ["Work"]],
-    ["Compelling", "Evoking strong interest or conviction", "He made a compelling argument.", suits, "Good", "Movie", []],
+    [
+      "Allocate",
+      "To distribute something for a particular purpose",
+      "The manager allocated resources to the project.",
+      budg,
+      "Hard",
+      "University",
+      ["Finance", "Work"],
+    ],
+    [
+      "Variance",
+      "The difference between planned and actual results",
+      "The team analysed the cost variance.",
+      budg,
+      "Good",
+      "University",
+      ["Finance"],
+    ],
+    [
+      "Forecast",
+      "To predict a future figure or trend",
+      "We forecast a rise in demand.",
+      budg,
+      "Good",
+      "Book",
+      ["Finance"],
+    ],
+    [
+      "Prudent",
+      "Acting with care and thought for the future",
+      "A prudent approach to spending.",
+      cima,
+      "Hard",
+      "News",
+      ["Important"],
+    ],
+    [
+      "Hit the ground running",
+      "To start something quickly and successfully",
+      "She hit the ground running in her new role.",
+      idioms,
+      "Again",
+      "Conversation",
+      ["Idiom"],
+    ],
+    [
+      "Leverage",
+      "To use something to maximum advantage",
+      "They leveraged their network to close the deal.",
+      suits,
+      "Easy",
+      "Movie",
+      ["Work"],
+    ],
+    [
+      "Compelling",
+      "Evoking strong interest or conviction",
+      "He made a compelling argument.",
+      suits,
+      "Good",
+      "Movie",
+      [],
+    ],
   ];
 
   words.forEach(([w, m, ex, folderId, difficulty, source, tags], i) => {
@@ -175,7 +231,7 @@ function seedDB(): DB {
   db.logs.push(
     { id: uid(), date: today(), typeId: "a-voc", minutes: 30 },
     { id: uid(), date: today(), typeId: "a-read", minutes: 45 },
-    { id: uid(), date: addDays(today(), -1), typeId: "a-speak", minutes: 20 }
+    { id: uid(), date: addDays(today(), -1), typeId: "a-speak", minutes: 20 },
   );
   return db;
 }
@@ -196,16 +252,22 @@ export function folderPath(folders: Folder[], id: string | null): Folder[] {
 
 export function folderLabel(folders: Folder[], id: string | null) {
   if (!id) return "Unfiled";
-  return folderPath(folders, id).map((f) => f.name).join(" → ") || "Unfiled";
+  return (
+    folderPath(folders, id)
+      .map((f) => f.name)
+      .join(" → ") || "Unfiled"
+  );
 }
 
 export function descendantIds(folders: Folder[], id: string): string[] {
   const out = [id];
   const walk = (parent: string) => {
-    folders.filter((f) => f.parentId === parent).forEach((f) => {
-      out.push(f.id);
-      walk(f.id);
-    });
+    folders
+      .filter((f) => f.parentId === parent)
+      .forEach((f) => {
+        out.push(f.id);
+        walk(f.id);
+      });
   };
   walk(id);
   return out;
@@ -219,7 +281,11 @@ export function isDescendant(folders: Folder[], candidate: string, ancestor: str
 // SRS (Spaced Repetition System)
 // ============================================
 
-export function applyReview(w: Word, rating: "Again" | "Hard" | "Good" | "Easy", schedule: number[]) {
+export function applyReview(
+  w: Word,
+  rating: "Again" | "Hard" | "Good" | "Easy",
+  schedule: number[],
+) {
   let stage = w.stage;
   if (rating === "Again") stage = 0;
   else if (rating === "Hard") stage = Math.max(0, stage);
@@ -244,6 +310,39 @@ export const minutesFmt = (m: number) => `${Math.floor(m / 60)}h ${m % 60}m`;
 // STORE CONTEXT
 // ============================================
 
+const DEVICE_ID_KEY = "english-os-user-id";
+
+// ============================================
+// CLOUD DATA (Netlify Database, via /api/app-data)
+// ============================================
+
+async function saveToCloud(id: string, data: DB): Promise<{ success: boolean; error?: unknown }> {
+  try {
+    const res = await fetch("/api/app-data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, data }),
+    });
+    if (!res.ok) return { success: false, error: await res.text() };
+    return { success: true };
+  } catch (error) {
+    return { success: false, error };
+  }
+}
+
+async function loadFromCloud(
+  id: string,
+): Promise<{ success: boolean; data?: DB | null; error?: unknown }> {
+  try {
+    const res = await fetch(`/api/app-data?id=${encodeURIComponent(id)}`);
+    if (!res.ok) return { success: false, error: await res.text() };
+    const { data } = await res.json();
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error };
+  }
+}
+
 type Ctx = {
   db: DB;
   ready: boolean;
@@ -252,9 +351,7 @@ type Ctx = {
   isAuthenticated: boolean;
   update: (fn: (d: DB) => void) => void;
   reset: () => void;
-  saveToTurso: (userId: string, data: DB) => Promise<{ success: boolean; error?: any }>;
-  loadFromTurso: (userId: string) => Promise<{ success: boolean; data?: DB; error?: any }>;
-  syncFromCloud: () => Promise<{ success: boolean; data?: DB; error?: any }>;
+  syncFromCloud: () => Promise<{ success: boolean; data?: DB | null; error?: unknown }>;
 };
 
 const StoreContext = createContext<Ctx | null>(null);
@@ -271,80 +368,50 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // ============================================
-  // TURSO FUNCTIONS
+  // CLOUD SYNC
   // ============================================
-
-  const saveToTurso = useCallback(async (userId: string, data: DB) => {
-    try {
-      const result = await tursoDb.save(userId, data);
-      if (!result.success) {
-        console.error("❌ Turso save failed:", result.error);
-      } else {
-        console.log("✅ Turso save successful for user:", userId);
-      }
-      return result;
-    } catch (error) {
-      console.error("❌ Turso save error:", error);
-      return { success: false, error };
-    }
-  }, []);
-
-  const loadFromTurso = useCallback(async (userId: string) => {
-    try {
-      const result = await tursoDb.load(userId);
-      if (result.success && result.data) {
-        const loadedData = { ...emptyDB(), ...result.data };
-        setDb(loadedData);
-        localStorage.setItem(KEY, JSON.stringify(loadedData));
-        console.log("✅ Turso load successful for user:", userId);
-        return { success: true, data: loadedData };
-      }
-      console.log("ℹ️ No data in Turso for user:", userId);
-      return { success: true, data: null };
-    } catch (error) {
-      console.error("❌ Turso load error:", error);
-      return { success: false, error };
-    }
-  }, []);
 
   const syncFromCloud = useCallback(async () => {
     if (!userId) {
-      console.warn("⚠️ No user ID for cloud sync");
-      return { success: false, error: "No user logged in" };
+      console.warn("⚠️ No device ID for cloud sync");
+      return { success: false, error: "No device ID" };
     }
-    console.log("🔄 Syncing from Turso...");
-    const result = await loadFromTurso(userId);
+    const result = await loadFromCloud(userId);
     if (result.success && result.data) {
-      setDb(result.data);
-      console.log("✅ Sync complete");
+      const loadedData = { ...emptyDB(), ...result.data };
+      setDb(loadedData);
+      localStorage.setItem(KEY, JSON.stringify(loadedData));
     }
     return result;
-  }, [userId, loadFromTurso]);
+  }, [userId]);
 
   // ============================================
   // UPDATE FUNCTION
   // ============================================
 
-  const update = useCallback((fn: (d: DB) => void) => {
-    setDb((prev) => {
-      const next: DB = JSON.parse(JSON.stringify(prev));
-      fn(next);
+  const update = useCallback(
+    (fn: (d: DB) => void) => {
+      setDb((prev) => {
+        const next: DB = JSON.parse(JSON.stringify(prev));
+        fn(next);
 
-      // Save to localStorage (fallback)
-      try {
-        localStorage.setItem(KEY, JSON.stringify(next));
-      } catch {
-        /* ignore */
-      }
+        // Save to localStorage (fallback)
+        try {
+          localStorage.setItem(KEY, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
 
-      // Save to Turso if authenticated
-      if (userId) {
-        saveToTurso(userId, next);
-      }
+        // Save to the database
+        if (userId) {
+          saveToCloud(userId, next);
+        }
 
-      return next;
-    });
-  }, [userId, saveToTurso]);
+        return next;
+      });
+    },
+    [userId],
+  );
 
   // ============================================
   // RESET FUNCTION
@@ -355,9 +422,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(KEY, JSON.stringify(fresh));
     setDb(fresh);
     if (userId) {
-      saveToTurso(userId, fresh);
+      saveToCloud(userId, fresh);
     }
-  }, [userId, saveToTurso]);
+  }, [userId]);
 
   // ============================================
   // INIT - LOAD DATA
@@ -367,32 +434,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const init = async () => {
       setLoading(true);
 
-      // Check for existing session (Supabase Auth)
-      // Note: You'll need to import supabase if using it
-      // For now, we'll check localStorage for userId
-      const storedUserId = localStorage.getItem("english-os-user-id");
-      
-      if (storedUserId) {
-        setUserId(storedUserId);
-        setIsAuthenticated(true);
-        
-        // Try loading from Turso first
-        const result = await loadFromTurso(storedUserId);
-        if (!result.success || !result.data) {
-          // Fallback to localStorage
-          try {
-            const raw = localStorage.getItem(KEY);
-            if (raw) {
-              setDb({ ...emptyDB(), ...JSON.parse(raw) });
-            } else {
-              setDb(seedDB());
-            }
-          } catch {
-            setDb(seedDB());
-          }
-        }
+      // Every browser gets a stable device ID so its data can sync to the database
+      let deviceId = localStorage.getItem(DEVICE_ID_KEY);
+      if (!deviceId) {
+        deviceId = crypto.randomUUID();
+        localStorage.setItem(DEVICE_ID_KEY, deviceId);
+      }
+      setUserId(deviceId);
+      setIsAuthenticated(true);
+
+      const result = await loadFromCloud(deviceId);
+      if (result.success && result.data) {
+        setDb({ ...emptyDB(), ...result.data });
       } else {
-        // No user - load from localStorage only
+        // No data in the database yet - fall back to localStorage, or seed
         try {
           const raw = localStorage.getItem(KEY);
           if (raw) {
@@ -410,24 +465,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
 
     init();
-  }, [loadFromTurso]);
+  }, []);
 
   // ============================================
   // CONTEXT VALUE
   // ============================================
 
-  const value = useMemo(() => ({
-    db,
-    ready,
-    loading,
-    userId,
-    isAuthenticated,
-    update,
-    reset,
-    saveToTurso,
-    loadFromTurso,
-    syncFromCloud,
-  }), [db, ready, loading, userId, isAuthenticated, update, reset, saveToTurso, loadFromTurso, syncFromCloud]);
+  const value = useMemo(
+    () => ({
+      db,
+      ready,
+      loading,
+      userId,
+      isAuthenticated,
+      update,
+      reset,
+      syncFromCloud,
+    }),
+    [db, ready, loading, userId, isAuthenticated, update, reset, syncFromCloud],
+  );
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
