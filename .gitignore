@@ -41,3 +41,5 @@ logs/
 # ============================================
 .vite/
 .cache/
+# Local Netlify folder
+.netlify
