@@ -16,6 +16,7 @@ import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as FocusRouteImport } from './routes/focus'
 import { Route as FoldersRouteImport } from './routes/folders'
 import { Route as LibraryRouteImport } from './routes/library'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as MindmapRouteImport } from './routes/mindmap'
 import { Route as ReviewRouteImport } from './routes/review'
 import { Route as SettingsRouteImport } from './routes/settings'
@@ -55,6 +56,11 @@ const LibraryRoute = LibraryRouteImport.update({
   path: '/library',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MindmapRoute = MindmapRouteImport.update({
   id: '/mindmap',
   path: '/mindmap',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/focus': typeof FocusRoute
   '/folders': typeof FoldersRoute
   '/library': typeof LibraryRoute
+  '/login': typeof LoginRoute
   '/mindmap': typeof MindmapRoute
   '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
@@ -91,6 +98,7 @@ export interface FileRoutesByTo {
   '/focus': typeof FocusRoute
   '/folders': typeof FoldersRoute
   '/library': typeof LibraryRoute
+  '/login': typeof LoginRoute
   '/mindmap': typeof MindmapRoute
   '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
@@ -104,6 +112,7 @@ export interface FileRoutesById {
   '/focus': typeof FocusRoute
   '/folders': typeof FoldersRoute
   '/library': typeof LibraryRoute
+  '/login': typeof LoginRoute
   '/mindmap': typeof MindmapRoute
   '/review': typeof ReviewRoute
   '/settings': typeof SettingsRoute
@@ -118,6 +127,7 @@ export interface FileRouteTypes {
     | '/focus'
     | '/folders'
     | '/library'
+    | '/login'
     | '/mindmap'
     | '/review'
     | '/settings'
@@ -130,6 +140,7 @@ export interface FileRouteTypes {
     | '/focus'
     | '/folders'
     | '/library'
+    | '/login'
     | '/mindmap'
     | '/review'
     | '/settings'
@@ -142,6 +153,7 @@ export interface FileRouteTypes {
     | '/focus'
     | '/folders'
     | '/library'
+    | '/login'
     | '/mindmap'
     | '/review'
     | '/settings'
@@ -155,6 +167,7 @@ export interface RootRouteChildren {
   FocusRoute: typeof FocusRoute
   FoldersRoute: typeof FoldersRoute
   LibraryRoute: typeof LibraryRoute
+  LoginRoute: typeof LoginRoute
   MindmapRoute: typeof MindmapRoute
   ReviewRoute: typeof ReviewRoute
   SettingsRoute: typeof SettingsRoute
@@ -211,6 +224,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LibraryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/mindmap': {
       id: '/mindmap'
       path: '/mindmap'
@@ -243,6 +263,7 @@ const rootRouteChildren: RootRouteChildren = {
   FocusRoute: FocusRoute,
   FoldersRoute: FoldersRoute,
   LibraryRoute: LibraryRoute,
+  LoginRoute: LoginRoute,
   MindmapRoute: MindmapRoute,
   ReviewRoute: ReviewRoute,
   SettingsRoute: SettingsRoute,

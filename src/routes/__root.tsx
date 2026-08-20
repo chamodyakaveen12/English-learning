@@ -1,3 +1,4 @@
+// src/routes/__root.tsx
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   Outlet,
@@ -6,12 +7,14 @@ import {
   useRouter,
   HeadContent,
   Scripts,
+  useNavigate,
+  useLocation,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
-import { StoreProvider } from "../lib/store";
+import { StoreProvider, useStore } from "../lib/store";
 
 function NotFoundComponent() {
   return (
@@ -127,14 +130,45 @@ function RootShell({ children }: { children: ReactNode }) {
   );
 }
 
+function AuthGuard({ children }: { children: ReactNode }) {
+  const { isAuthenticated, ready } = useStore();
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (!ready) return;
+
+    // Not logged in → force go to login
+    if (!isAuthenticated && location.pathname !== "/login") {
+      navigate({ to: "/login" });
+    }
+
+    // Already logged in and on login page → go to dashboard
+    if (isAuthenticated && location.pathname === "/login") {
+      navigate({ to: "/" });
+    }
+  }, [ready, isAuthenticated, location.pathname, navigate]);
+
+  if (!ready) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-950 text-white">
+        Loading...
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
   return (
     <QueryClientProvider client={queryClient}>
       <StoreProvider>
-        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-        <Outlet />
+        <AuthGuard>
+          <Outlet />
+        </AuthGuard>
       </StoreProvider>
     </QueryClientProvider>
   );

@@ -1,145 +1,108 @@
 // src/lib/turso.ts
-import { createClient } from '@libsql/client';
+import { createClient } from "@libsql/client";
 
-// ============================================
-// TURSO DATABASE CLIENT
-// ============================================
+const tursoUrl = "libsql://english-kaveen12.aws-ap-south-1.turso.io";
+const tursoAuthToken =
+  "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODcyMTM0NzEsImlkIjoiMDFhMDFkYjMtY2YwMS03Y2IyLWJkMTctMTdiMDk4ZTY3MzI0Iiwia2lkIjoiMUNHcmF1eUdfUGRnRk1KTFN6aDY4RC1DdlBHU05qQkFZRndfNEJyS2ZOTSIsInJpZCI6ImQ4ZTUwNjE1LTgxODgtNDZlOS1hNGQ0LTRlNGNmNjU5MDlkNyJ9.6G2ZGioVvXOuHOmvqSppYccpW9Rx3GQdkUKq71vIFmD51syezGBjr2L-bFdFtuupyp4Av73vMhRVoAoVR-sJDA";
 
-// Get credentials from environment variables
-const tursoUrl = import.meta.env.VITE_TURSO_URL;
-const tursoAuthToken = import.meta.env.VITE_TURSO_AUTH_TOKEN;
+console.log("✅ Turso URL loaded");
+console.log("✅ Turso Token loaded");
 
-// Validate environment variables
-if (!tursoUrl) {
-  console.error('❌ VITE_TURSO_URL is not set in .env file');
-  throw new Error('VITE_TURSO_URL environment variable is not set');
-}
-
-if (!tursoAuthToken) {
-  console.error('❌ VITE_TURSO_AUTH_TOKEN is not set in .env file');
-  throw new Error('VITE_TURSO_AUTH_TOKEN environment variable is not set');
-}
-
-console.log('✅ Turso client initialized');
-console.log(`📡 Database URL: ${tursoUrl.substring(0, 50)}...`);
-
-// Create Turso client
 export const turso = createClient({
   url: tursoUrl,
   authToken: tursoAuthToken,
 });
 
-// ============================================
-// DATABASE OPERATIONS
-// ============================================
-
 export const tursoDb = {
-  /**
-   * Save user data to Turso
-   * @param userId - The user's unique ID
-   * @param data - The user's data object
-   * @returns { success: boolean, error?: any }
-   */
-  save: async (userId: string, data: any) => {
+  // Register new user
+  register: async (email: string, password: string) => {
+    try {
+      const existing = await turso.execute({
+        sql: "SELECT user_id FROM app_data WHERE user_id = ?",
+        args: [email],
+      });
+
+      if (existing.rows.length > 0) {
+        return { success: false, error: "Email already registered" };
+      }
+
+      await turso.execute({
+        sql: `INSERT INTO app_data (user_id, password, data, updated_at)
+              VALUES (?, ?, ?, datetime('now'))`,
+        args: [email, password, JSON.stringify({})],
+      });
+
+      return { success: true };
+    } catch (error: any) {
+      console.error("Register error:", error);
+      return { success: false, error: error?.message || "Registration failed" };
+    }
+  },
+
+  // Login
+  login: async (email: string, password: string) => {
     try {
       const result = await turso.execute({
-        sql: `INSERT OR REPLACE INTO app_data (user_id, data, updated_at) 
-              VALUES (?, ?, datetime('now'))`,
-        args: [userId, JSON.stringify(data)],
+        sql: "SELECT password, data FROM app_data WHERE user_id = ?",
+        args: [email],
       });
-      console.log(`✅ Data saved for user: ${userId}`);
-      return { success: true, result };
-    } catch (error) {
-      console.error('❌ Turso save error:', error);
+
+      if (result.rows.length === 0) {
+        return { success: false, error: "Email not found" };
+      }
+
+      const row = result.rows[0] as any;
+
+      if (row.password !== password) {
+        return { success: false, error: "Wrong password" };
+      }
+
+      return {
+        success: true,
+        data: row.data ? JSON.parse(row.data) : null,
+      };
+    } catch (error: any) {
+      console.error("Login error:", error);
+      return { success: false, error: error?.message || "Login failed" };
+    }
+  },
+
+  // Save full user data
+  save: async (userId: string, data: any) => {
+    try {
+      await turso.execute({
+        sql: `UPDATE app_data 
+              SET data = ?, updated_at = datetime('now') 
+              WHERE user_id = ?`,
+        args: [JSON.stringify(data), userId],
+      });
+      return { success: true };
+    } catch (error: any) {
+      console.error("Save error:", error);
       return { success: false, error };
     }
   },
 
-  /**
-   * Load user data from Turso
-   * @param userId - The user's unique ID
-   * @returns { success: boolean, data?: any, error?: any }
-   */
+  // Load full user data
   load: async (userId: string) => {
     try {
       const result = await turso.execute({
-        sql: 'SELECT data FROM app_data WHERE user_id = ?',
+        sql: "SELECT data FROM app_data WHERE user_id = ?",
         args: [userId],
       });
-      
-      if (result.rows && result.rows.length > 0) {
-        const row = result.rows[0] as any;
-        console.log(`✅ Data loaded for user: ${userId}`);
-        return { 
-          success: true, 
-          data: JSON.parse(row.data as string) 
-        };
+
+      if (result.rows.length === 0) {
+        return { success: true, data: null };
       }
-      
-      console.log(`ℹ️ No data found for user: ${userId}`);
-      return { success: true, data: null };
-    } catch (error) {
-      console.error('❌ Turso load error:', error);
-      return { success: false, error };
-    }
-  },
 
-  /**
-   * Delete user data from Turso
-   * @param userId - The user's unique ID
-   * @returns { success: boolean, error?: any }
-   */
-  delete: async (userId: string) => {
-    try {
-      const result = await turso.execute({
-        sql: 'DELETE FROM app_data WHERE user_id = ?',
-        args: [userId],
-      });
-      console.log(`🗑️ Data deleted for user: ${userId}`);
-      return { success: true, result };
-    } catch (error) {
-      console.error('❌ Turso delete error:', error);
-      return { success: false, error };
-    }
-  },
-
-  /**
-   * Get all users (admin only)
-   * @returns { success: boolean, rows?: any[], error?: any }
-   */
-  getAllUsers: async () => {
-    try {
-      const result = await turso.execute({
-        sql: 'SELECT user_id, updated_at FROM app_data ORDER BY updated_at DESC',
-        args: [],
-      });
-      console.log(`📊 Found ${result.rows?.length || 0} users`);
-      return { success: true, rows: result.rows };
-    } catch (error) {
-      console.error('❌ Turso get all users error:', error);
-      return { success: false, error };
-    }
-  },
-
-  /**
-   * Check if user exists in database
-   * @param userId - The user's unique ID
-   * @returns { success: boolean, exists: boolean, error?: any }
-   */
-  userExists: async (userId: string) => {
-    try {
-      const result = await turso.execute({
-        sql: 'SELECT user_id FROM app_data WHERE user_id = ?',
-        args: [userId],
-      });
-      const exists = result.rows && result.rows.length > 0;
-      console.log(`🔍 User ${userId}: ${exists ? 'exists' : 'not found'}`);
-      return { success: true, exists };
-    } catch (error) {
-      console.error('❌ Turso user exists error:', error);
+      const row = result.rows[0] as any;
+      return {
+        success: true,
+        data: row.data ? JSON.parse(row.data) : null,
+      };
+    } catch (error: any) {
+      console.error("Load error:", error);
       return { success: false, error };
     }
   },
 };
-
-export default turso;
